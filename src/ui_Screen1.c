@@ -65,7 +65,7 @@ void ui_Screen1_screen_init(void)
     ui_erpmbackswitchup = lv_btn_create(ui_Screen1);
     lv_obj_set_width(ui_erpmbackswitchup, 400);
     lv_obj_set_height(ui_erpmbackswitchup, 100);
-    lv_obj_set_x(ui_erpmbackswitchup, 200);
+    lv_obj_set_x(ui_erpmbackswitchup, 400);
     lv_obj_set_y(ui_erpmbackswitchup, -190);
     lv_obj_set_align(ui_erpmbackswitchup, LV_ALIGN_CENTER);
     lv_obj_set_style_radius(ui_erpmbackswitchup, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -76,7 +76,7 @@ void ui_Screen1_screen_init(void)
     ui_erpmbackswitchdown = lv_btn_create(ui_Screen1);
     lv_obj_set_width(ui_erpmbackswitchdown, 400);
     lv_obj_set_height(ui_erpmbackswitchdown, 100);
-    lv_obj_set_x(ui_erpmbackswitchdown, -200);
+    lv_obj_set_x(ui_erpmbackswitchdown, -400);
     lv_obj_set_y(ui_erpmbackswitchdown, -190);
     lv_obj_set_align(ui_erpmbackswitchdown, LV_ALIGN_CENTER);
     lv_obj_set_style_radius(ui_erpmbackswitchdown, 1, LV_PART_MAIN | LV_STATE_DEFAULT);
@@ -101,9 +101,9 @@ void ui_Screen1_screen_init(void)
 
     ui_rpmtextback = lv_btn_create(ui_Screen1);
     lv_obj_set_width(ui_rpmtextback, 250);
-    lv_obj_set_height(ui_rpmtextback, 30);
+    lv_obj_set_height(ui_rpmtextback, 50);
     lv_obj_set_x(ui_rpmtextback, -10);
-    lv_obj_set_y(ui_rpmtextback, 35);
+    lv_obj_set_y(ui_rpmtextback, 25);
     lv_obj_set_align(ui_rpmtextback, LV_ALIGN_TOP_MID);
     lv_obj_set_style_bg_color(ui_rpmtextback, lv_color_hex(0x00FF36), LV_PART_MAIN | LV_STATE_DEFAULT);
     lv_obj_set_style_bg_opa(ui_rpmtextback, 255, LV_PART_MAIN | LV_STATE_DEFAULT);

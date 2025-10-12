@@ -136,15 +136,35 @@ void setup()
 
 void loop() {
   update = false;
-  if (ESP32Can.readFrame(rxFrame, 1000))
-  {
+  if (ESP32Can.readFrame(rxFrame, 1000)) {
     rule_engine.run(rxFrame);
   }
-  display_update();
-  if (update)
-  {
+
+  if (update) {
     lv_timer_handler();
   }
+}
+
+
+void display_update_rpm() {
+  toggle_visibility(!rpm_up, ui_erpmbackswitchup);
+  toggle_visibility(!rpm_down, ui_erpmbackswitchdown);
+}
+
+void display_update_voltage() {
+  toggle_visibility(voltage, ui_evoltageback);
+}
+
+void display_update_pressure() {
+  toggle_visibility(pressure, ui_eoilpressureback);
+}
+
+void display_update_temperature() {
+  toggle_visibility(temperature, ui_eoiltemperatureback);
+}
+
+void display_update_engine_error() {
+  toggle_visibility(engine_error, ui_eengineback);
 }
 
 
@@ -197,12 +217,6 @@ void handle_speed(const CanFrame &rxFrame) {
 }
 
 void handle_rpm(const CanFrame &rxFrame) {
-    //ui_erpm            RPM   0x360 0-1 rpm y = x
-    // ui_erpm
-    // ui_erpmbackswitchdown
-    // ui_erpmbackswitchup
-    // ui_erpmbar
-  // 0x360; bits 0-1 RPM; y = x
   u16 bit0 = (u16)rxFrame.data[0];
   u16 bit1 = (u16)rxFrame.data[1];
   u16 raw = ((bit0 << 8) | bit1);
@@ -211,9 +225,12 @@ void handle_rpm(const CanFrame &rxFrame) {
   update_text_u16((u16)raw, ui_erpm);
   lv_bar_set_value(ui_erpmbar, raw, LV_ANIM_OFF);
 
-  toggle_max_threshold(rpm_val, (double)RPM_MAX, rpm_up);   // rpm_up true only if rpm_val > RPM_MAX
-  toggle_min_threshold(rpm_val, (double)RPM_MIN, rpm_down); // rpm_down true only if rpm_val < RPM_MIN
+  toggle_max_threshold(rpm_val, (double)RPM_MAX, rpm_up);
+  toggle_min_threshold(rpm_val, (double)RPM_MIN, rpm_down);
+
+  display_update_rpm();   // 👈 only update related elements
 }
+
 
 void handle_engine_voltage(const CanFrame &rxFrame) {
   // ui_evoltage        V     0x372 0-1 battery voltage Volts y = x/10
@@ -226,7 +243,7 @@ void handle_engine_voltage(const CanFrame &rxFrame) {
   toggle_min_threshold(voltage_val, VOLTAGE_MIN, voltage);
   dim_text(voltage, ui_evoltage);
   dim_text(voltage, ui_voltagedu);
-
+  display_update_voltage();
 #if (HAS_DISPLAY)
 #else
   lv_snprintf(buf, sizeof(buf), "%.1f", voltage_val);
@@ -249,6 +266,7 @@ void handle_oil_pressure(const CanFrame &rxFrame) {
   toggle_min_threshold(pressure_val, PRESSURE_MIN, pressure);
   dim_text(pressure, ui_eoilpressure);
   dim_text(pressure, ui_oilpressuredu);
+  display_update_pressure();
 #if (HAS_DISPLAY)
 #else
   lv_snprintf(buf, sizeof(buf), "%.1f", pressure_val);
@@ -271,6 +289,7 @@ void handle_oil_temp(const CanFrame &rxFrame) {
   toggle_max_threshold(temperature_val, TEMP_MAX, temperature);
   dim_text(temperature, ui_eoiltemperature);
   dim_text(temperature, ui_oiltemperaturedu);
+  display_update_temperature();
 
 #if (HAS_DISPLAY)
 #else
@@ -303,6 +322,7 @@ void handle_engine_light(const CanFrame &rxFrame) {
   u8 engine_light_val = (rxFrame.data[7] >> 7) & 0x01;
   engine_error = (engine_light_val != 0);
   dim_text(engine_error, ui_enginedu);
+  display_update_engine_error();
 
 #if (HAS_DISPLAY)
 #else

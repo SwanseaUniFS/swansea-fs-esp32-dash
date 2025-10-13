@@ -1,0 +1,13 @@
+@startuml this
+entity Canbus as cb
+Participant CPU0 as c0
+database Memory as m
+Participant CPU1 as c1
+entity Screen as sc
+
+
+cb -> c0 : Input
+c0 -> m : Store
+c1 <-> m : Read
+c1 -> sc : Output
+@enduml

@@ -1,0 +1,54 @@
+@startuml
+
+
+'scale 1.5 | scale 200 width | scale 100 height | scale [max] 200x100
+skinparam {
+    Padding 10
+    DefaultFontSize 14
+}
+() "   CANBUS IN" as ci
+() "DISPLAY OUT" as co
+[Start\nSetup Code\nSame Pointer] as sec
+
+[CPU 0] as c0
+[CPU 1] as c1
+[Memory] as m
+
+[Canbus Code] as canbuscode
+[Check Can] as checkcan
+[Store to Memory] as stm
+
+[Screen Code] as scc
+[Check Memory] as chm
+[Output to Screen] as ots
+
+
+
+
+sec --> c0 : p1
+sec --> c1 : p1
+
+
+c0--> canbuscode
+c1 --> scc 
+
+
+ci - checkcan
+canbuscode -down-> checkcan
+checkcan --> stm
+stm --> canbuscode
+stm -- m : p1
+
+
+chm -- m : p1
+scc --> chm
+chm --> ots
+ots --> scc
+ots -- co
+
+chm -[hidden]- stm
+
+c0 -[hidden]- c1
+canbuscode -[hidden]- scc
+
+@enduml

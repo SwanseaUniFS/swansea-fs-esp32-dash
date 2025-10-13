@@ -229,7 +229,7 @@ void handle_rpm(const CanFrame &rxFrame) {
   toggle_min_threshold(rpm_val, (double)RPM_MIN, rpm_down);
 
   display_update_rpm();  
-
+}
 
 void handle_engine_voltage(const CanFrame &rxFrame) {
   // ui_evoltage        V     0x372 0-1 battery voltage Volts y = x/10

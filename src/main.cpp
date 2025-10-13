@@ -228,8 +228,7 @@ void handle_rpm(const CanFrame &rxFrame) {
   toggle_max_threshold(rpm_val, (double)RPM_MAX, rpm_up);
   toggle_min_threshold(rpm_val, (double)RPM_MIN, rpm_down);
 
-  display_update_rpm();   // 👈 only update related elements
-}
+  display_update_rpm();  
 
 
 void handle_engine_voltage(const CanFrame &rxFrame) {

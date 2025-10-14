@@ -8,15 +8,18 @@
 #include <cstdint>
 #include <cstdio>
 
-#define CAN_TX 5
-#define CAN_RX 4
 #define SPEED 1000
-#define HAS_DISPLAY 0
+#define HAS_DISPLAY 1
 
 #if (HAS_DISPLAY)
 #include "ui.h"
 #include "ui_code.hpp"
 #include <lvgl.h>
+#define CAN_TX 44
+#define CAN_RX 43
+#else
+#define CAN_TX 5
+#define CAN_RX 4
 #endif
 
 using u8 = uint8_t;

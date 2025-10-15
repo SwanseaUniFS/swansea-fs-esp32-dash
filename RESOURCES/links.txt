@@ -1,2 +1,4 @@
 Telemetry Radio Network Card and Antennas
 https://tinyurl.com/strawzy
+Pi Zero 2W
+https://tinyurl.com/strawzy2

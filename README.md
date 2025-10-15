@@ -35,7 +35,7 @@ This will add the UI onto the screen.
 1. Unplug the 4 Pin JST Connector for the ESP32 Screen Module
    
    <img width="521" height="521" alt="image" src="https://github.com/user-attachments/assets/217d4a04-f396-4bb4-be5c-fb3ca4b260d0" />
-3. Plug 4 Male to Female plugs into the 4 holes of the JST Connector
+3. Plug 4 Male to Female wires into the 4 holes of the JST Connector
 4. From Left to Right on the JST, on the ESP-S3-DEV-KIT, the 1st connector goes to GND, 2nd goes to 3V3, 3rd to Pin 4 (TX) and 4th to Pin 5 (RX)
 5. In the code, change the line `HAS_DISPLAY 1` to `HAS_DISPLAY 0` so the information will get sent to the serial monitor
 6. Ensure the serial speed matches the serial monitor (usually 9600)

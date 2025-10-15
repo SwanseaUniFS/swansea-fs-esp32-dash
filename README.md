@@ -28,6 +28,22 @@ Holds the code to initialise the ESP32 Dash using Platformio.
 
 This will add the UI onto the screen.
 
-
-
 ---
+
+## Converting to Headless Mode
+
+1. Unplug the 4 Pin JST Connector for the ESP32 Screen Module
+   
+   <img width="521" height="521" alt="image" src="https://github.com/user-attachments/assets/217d4a04-f396-4bb4-be5c-fb3ca4b260d0" />
+3. Plug 4 Male to Female plugs into the 4 holes of the JST Connector
+4. From Left to Right on the JST, on the ESP-S3-DEV-KIT, the 1st connector goes to GND, 2nd goes to 3V3, 3rd to Pin 4 (TX) and 4th to Pin 5 (RX)
+5. In the code, change the line `HAS_DISPLAY 1` to `HAS_DISPLAY 0` so the information will get sent to the serial monitor
+6. Ensure the serial speed matches the serial monitor (usually 9600)
+7. Unplug the CANBUS Connector from your ESP32-S3 and ensure the COM is set to the correct port
+8. Upload the code to the ESP32-S3 (**Step 13 of Installation**)
+9. Open the Serial Monitor
+    
+   <img width="266" height="32" alt="image" src="https://github.com/user-attachments/assets/4b883b25-4544-479a-8f16-20b6189bcf22" />
+11. Replug in the CANBUS and ensure the data is getting transmitted to the serial monitor every time it is recieved from the Pico or the ECU 
+
+

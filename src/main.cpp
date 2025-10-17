@@ -1,12 +1,14 @@
 /*
 ########################## open include directory and edit config.h to change values ############################
 */
+
 #include "can_rule_engine.h"
 #include "driver/twai.h"
 #include <ESP32-TWAI-CAN.hpp>
 #include "config.h"
 #include <cstdint>
 #include <cstdio>
+#include <Arduino.h>
 
 #define SPEED 1000
 #define HAS_DISPLAY 1
@@ -25,6 +27,8 @@
 using u8 = uint8_t;
 using u16 = uint16_t;
 
+void canbusTask(void *pvParameters);  //CPU 0 task for CANBUS
+void displayTask(void *pvParameters); //CPU1 task for display
 void handle_speed(const CanFrame &rxFrame);
 void handle_rpm(const CanFrame &rxFrame);
 void handle_engine_voltage(const CanFrame &rxFrame);
@@ -34,28 +38,28 @@ void handle_gear_selection(const CanFrame &rxFrame);
 void handle_engine_light(const CanFrame &rxFrame);
 void display_update();
 
-class CompareIdentifier {
-  u16 identifier;
-
-public:
-  CompareIdentifier(u16 identifier) : identifier(identifier) {};
-  bool operator()(const CanFrame &rxFrame) const {
-    return rxFrame.identifier == identifier;
-  }
-};
-
-char buf[32];
 CanFrame rxFrame;
-RuleEngine<CanFrame> rule_engine;
+RuleEngine<CanFrame> rule_engine;   
 
-bool update = false;
-bool engine_error = false;
-bool rpm_up = false;
-bool rpm_down = false;
-bool temperature = false;
-bool pressure = false;
-bool voltage = false;
-bool gear = false;
+struct SharedData {
+  double speed;
+  double rpm;
+  double voltage;
+  double pressure;
+  double temperature;
+  uint8_t gear;
+  bool engine_error;
+  bool rpm_up;
+  bool rpm_down;
+  bool pressure_low;
+  bool voltage_low;
+  bool temperature_high;
+} shared;
+
+SemaphoreHandle_t dataMutex;
+
+TaskHandle_t canbusTaskHandle = NULL;
+TaskHandle_t displayTaskHandle = NULL;
 
 inline void toggle_min_threshold(double value, double min_value, bool &condition) {
   condition = (value < min_value);
@@ -69,90 +73,26 @@ inline void toggle_out_of_range(double value, double min_value, double max_value
   condition = (value < min_value) || (value > max_value);
 }
 
+class CompareIdentifier {
+  uint16_t identifier;
 
-#if (HAS_DISPLAY)
-
-inline bool is_visible(lv_obj_t *o) {
-  return !lv_obj_has_flag(o, LV_OBJ_FLAG_HIDDEN);
-}
-
-void toggle_visibility(bool condition, lv_obj_t *ui_element) {
-  bool currently_visible = is_visible(ui_element);
-  if (condition && !currently_visible) {
-    lv_obj_clear_flag(ui_element, LV_OBJ_FLAG_HIDDEN);
-    update = true;
-  } else if (!condition && currently_visible) {
-    lv_obj_add_flag(ui_element, LV_OBJ_FLAG_HIDDEN);
-    update = true;
+public:
+  CompareIdentifier(uint16_t identifier) : identifier(identifier) {}
+  bool operator()(const CanFrame &rxFrame) const {
+    return rxFrame.identifier == identifier;  //i believe if frameID matches the rule its true 
   }
-}
-
-void dim_text(bool condition, lv_obj_t *ui_element) {
-  if (condition) {
-    lv_obj_set_style_text_color(ui_element, lv_color_hex(0xFFFFFF), LV_PART_MAIN | LV_STATE_DEFAULT);
-  } else {
-    lv_obj_set_style_text_color(ui_element, lv_color_hex(0x555555), LV_PART_MAIN | LV_STATE_DEFAULT);
-  }
-}
-
-void update_text_u16(u16 value, lv_obj_t *ui_element) {
-  lv_snprintf(buf, sizeof(buf), "%u", (unsigned)value);
-  lv_label_set_text(ui_element, buf);
-  update = true;
-}
-
-void update_text_float(double value, lv_obj_t *ui_element, int precision = 1) {
-  char fmt[8];
-  std::snprintf(fmt, sizeof(fmt), "%%.%df", precision);
-  lv_snprintf(buf, sizeof(buf), fmt, value);
-  lv_label_set_text(ui_element, buf);
-  update = true;
-}
-
-void display_update_rpm() {
-  toggle_visibility(!rpm_up, ui_erpmbackswitchup);
-  toggle_visibility(!rpm_down, ui_erpmbackswitchdown);
-}
-
-void display_update_voltage() {
-  toggle_visibility(voltage, ui_evoltageback);
-}
-
-void display_update_pressure() {
-  toggle_visibility(pressure, ui_eoilpressureback);
-}
-
-void display_update_temperature() {
-  toggle_visibility(temperature, ui_eoiltemperatureback);
-}
-
-void display_update_engine_error() {
-  toggle_visibility(engine_error, ui_eengineback);
-}
-
-void display_update() {
-  toggle_visibility(!rpm_up, ui_erpmbackswitchup);
-  toggle_visibility(!rpm_down, ui_erpmbackswitchdown);
-  toggle_visibility(engine_error, ui_eengineback);
-  toggle_visibility(temperature, ui_eoiltemperatureback);
-  toggle_visibility(pressure, ui_eoilpressureback);
-  toggle_visibility(voltage, ui_evoltageback);
-}
-
-#endif // HAS_DISPLAY
+};
 
 
 void setup() {
   Serial.begin(9600);
+  Serial.println("Starting system...");
 
-  auto SUCCESS =
-      ESP32Can.begin(ESP32Can.convertSpeed(SPEED), CAN_TX, CAN_RX, 10, 10);
-
-  if (SUCCESS) {
+  bool success = ESP32Can.begin(ESP32Can.convertSpeed(SPEED), CAN_TX, CAN_RX, 10, 10);
+  if (success)
     Serial.println("CAN bus started!");
-  } else {
+  else
     Serial.println("CAN bus failed!");
-  }
 
   rule_engine.add_rule(CompareIdentifier(0x370), &handle_speed);
   rule_engine.add_rule(CompareIdentifier(0x360), &handle_rpm);
@@ -165,127 +105,112 @@ void setup() {
 #if (HAS_DISPLAY)
   init_screen();
 #else
-  Serial.println("Running in headless mode (no display)");
+  Serial.println("Headless mode (no display)");
 #endif
+
+  // created a mutex to protect 'shared'
+  dataMutex = xSemaphoreCreateMutex();
+
+  // Created CANBus task on CPU 0
+  xTaskCreatePinnedToCore(
+      canbusTask,          
+      "CAN Task",      
+      4096,
+      NULL,
+      2,
+      &canbusTaskHandle,
+      0                // this is the core 
+  );
+
+  // Created Display task on CPU 1
+  xTaskCreatePinnedToCore(
+      displayTask,
+      "Display Task",
+      8192,
+      NULL,
+      1,
+      &displayTaskHandle,
+      1               
+  );
 }
 
-void loop() {
-  update = false;
-
-  if (ESP32Can.readFrame(rxFrame, 1000)) {
-    rule_engine.run(rxFrame);
+void canbusTask(void *pvParameters) {
+  for (;;) {
+    if (ESP32Can.readFrame(rxFrame, 100)) {
+      xSemaphoreTake(dataMutex, portMAX_DELAY);
+      rule_engine.run(rxFrame); // process frame, update shared struct
+      xSemaphoreGive(dataMutex);
+    }
+    vTaskDelay(1);
   }
+}
 
+void loop() {}
+
+
+void displayTask(void *pvParameters) {
+  for (;;) { // this is a scummy way to allow it to run forever 
 #if (HAS_DISPLAY)
-  if (update) {
-    lv_timer_handler();
-  }
-#endif
-}
+    xSemaphoreTake(dataMutex, portMAX_DELAY);
 
+    lv_label_set_text_fmt(ui_espeed, "%d", (int)shared.speed);
+    lv_label_set_text_fmt(ui_erpm, "%d", (int)shared.rpm);
+    lv_label_set_text_fmt(ui_egear, "%d", (int)shared.gear);
+    lv_label_set_text_fmt(ui_evoltage, "%.1f", shared.voltage);
+    lv_label_set_text_fmt(ui_eoilpressure, "%.1f", shared.pressure);
+    lv_label_set_text_fmt(ui_eoiltemperature, "%.1f", shared.temperature);
+
+    lv_arc_set_value(ui_espeedarc, shared.speed);
+    lv_bar_set_value(ui_erpmbar, shared.rpm, LV_ANIM_OFF);
+
+    if (shared.engine_error)
+      lv_obj_clear_flag(ui_eengineback, LV_OBJ_FLAG_HIDDEN);
+    else
+      lv_obj_add_flag(ui_eengineback, LV_OBJ_FLAG_HIDDEN);
+
+    xSemaphoreGive(dataMutex);
+
+    lv_timer_handler();
+#endif
+    vTaskDelay(10 / portTICK_PERIOD_MS); 
+  }
+}
 
 void handle_speed(const CanFrame &rxFrame) {
   u16 raw = ((u16)rxFrame.data[0] << 8) | (u16)rxFrame.data[1];
-  u16 speed_val = raw / 10;
-
-#if (HAS_DISPLAY)
-  update_text_u16(speed_val, ui_espeed);
-  lv_arc_set_value(ui_espeedarc, speed_val);
-#else
-  snprintf(buf, sizeof(buf), "%u", (unsigned)speed_val);
-  Serial.print("Speed: ");
-  Serial.println(buf);
-#endif
+  shared.speed = raw / 10.0;
 }
 
 void handle_rpm(const CanFrame &rxFrame) {
   u16 raw = ((u16)rxFrame.data[0] << 8) | (u16)rxFrame.data[1];
-  double rpm_val = (double)raw;
+  shared.rpm = raw;
 
-#if (HAS_DISPLAY)
-  update_text_u16((u16)raw, ui_erpm);
-  lv_bar_set_value(ui_erpmbar, raw, LV_ANIM_OFF);
-  toggle_max_threshold(rpm_val, (double)RPM_MAX, rpm_up);
-  toggle_min_threshold(rpm_val, (double)RPM_MIN, rpm_down);
-  display_update_rpm();
-#else
-  Serial.printf("RPM: %.0f\n", rpm_val);
-#endif
+  toggle_max_threshold(shared.rpm, (double)RPM_MAX, shared.rpm_up);
+  toggle_min_threshold(shared.rpm, (double)RPM_MIN, shared.rpm_down);
 }
 
 void handle_engine_voltage(const CanFrame &rxFrame) {
   u16 raw = ((u16)rxFrame.data[0] << 8) | (u16)rxFrame.data[1];
-  double voltage_val = raw / 10.0;
-
-#if (HAS_DISPLAY)
-  update_text_float(voltage_val, ui_evoltage, 1);
-  toggle_min_threshold(voltage_val, VOLTAGE_MIN, voltage);
-  dim_text(voltage, ui_evoltage);
-  dim_text(voltage, ui_voltagedu);
-  display_update_voltage();
-#else
-  snprintf(buf, sizeof(buf), "%.1f", voltage_val);
-  Serial.print("Voltage: ");
-  Serial.println(buf);
-#endif
+  shared.voltage = raw / 10.0;
+  toggle_min_threshold(shared.voltage, VOLTAGE_MIN, shared.voltage_low);
 }
 
 void handle_oil_pressure(const CanFrame &rxFrame) {
   u16 raw = ((u16)rxFrame.data[2] << 8) | (u16)rxFrame.data[3];
-  double pressure_val = raw / 10.0 - 101.3;
-
-#if (HAS_DISPLAY)
-  update_text_float(pressure_val, ui_eoilpressure, 1);
-  toggle_min_threshold(pressure_val, PRESSURE_MIN, pressure);
-  dim_text(pressure, ui_eoilpressure);
-  dim_text(pressure, ui_oilpressuredu);
-  display_update_pressure();
-#else
-  snprintf(buf, sizeof(buf), "%.1f", pressure_val);
-  Serial.print("Oil Pressure (kPa): ");
-  Serial.println(buf);
-#endif
+  shared.pressure = raw / 10.0 - 101.3;
+  toggle_min_threshold(shared.pressure, PRESSURE_MIN, shared.pressure_low);
 }
 
 void handle_oil_temp(const CanFrame &rxFrame) {
   u16 raw = ((u16)rxFrame.data[6] << 8) | (u16)rxFrame.data[7];
-  double temperature_val = raw / 10.0 - 273.15;
-
-#if (HAS_DISPLAY)
-  update_text_float(temperature_val, ui_eoiltemperature, 1);
-  toggle_max_threshold(temperature_val, TEMP_MAX, temperature);
-  dim_text(temperature, ui_eoiltemperature);
-  dim_text(temperature, ui_oiltemperaturedu);
-  display_update_temperature();
-#else
-  snprintf(buf, sizeof(buf), "%.1f", temperature_val);
-  Serial.print("Oil Temp (°C): ");
-  Serial.println(buf);
-#endif
+  shared.temperature = raw / 10.0 - 273.15;
+  toggle_max_threshold(shared.temperature, TEMP_MAX, shared.temperature_high);
 }
 
 void handle_gear_selection(const CanFrame &rxFrame) {
-  u16 gear_val = (u16)rxFrame.data[7];
-
-#if (HAS_DISPLAY)
-  update_text_u16(gear_val, ui_egear);
-#else
-  snprintf(buf, sizeof(buf), "%u", (unsigned)gear_val);
-  Serial.print("Gear: ");
-  Serial.println(buf);
-#endif
+  shared.gear = rxFrame.data[7];
 }
 
 void handle_engine_light(const CanFrame &rxFrame) {
-  u8 engine_light_val = (rxFrame.data[7] >> 7) & 0x01;
-  engine_error = (engine_light_val != 0);
-
-#if (HAS_DISPLAY)
-  dim_text(engine_error, ui_enginedu);
-  display_update_engine_error();
-#else
-  snprintf(buf, sizeof(buf), "%u", (unsigned)engine_light_val);
-  Serial.print("Check Engine: ");
-  Serial.println(buf);
-#endif
+  shared.engine_error = ((rxFrame.data[7] >> 7) & 0x01);
 }

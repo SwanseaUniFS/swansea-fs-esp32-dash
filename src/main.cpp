@@ -11,7 +11,7 @@
 #include <Arduino.h>
 
 #define SPEED 1000
-#define HAS_DISPLAY 1
+#define HAS_DISPLAY 1   
 
 #if (HAS_DISPLAY)
 #include "ui.h"
@@ -27,8 +27,8 @@
 using u8 = uint8_t;
 using u16 = uint16_t;
 
-void canbusTask(void *pvParameters);  //CPU 0 task for CANBUS
-void displayTask(void *pvParameters); //CPU1 task for display
+void canbusTask(void *pvParameters);
+void displayTask(void *pvParameters);
 void handle_speed(const CanFrame &rxFrame);
 void handle_rpm(const CanFrame &rxFrame);
 void handle_engine_voltage(const CanFrame &rxFrame);
@@ -36,10 +36,9 @@ void handle_oil_pressure(const CanFrame &rxFrame);
 void handle_oil_temp(const CanFrame &rxFrame);
 void handle_gear_selection(const CanFrame &rxFrame);
 void handle_engine_light(const CanFrame &rxFrame);
-void display_update();
 
 CanFrame rxFrame;
-RuleEngine<CanFrame> rule_engine;   
+RuleEngine<CanFrame> rule_engine;
 
 struct SharedData {
   double speed;
@@ -57,7 +56,6 @@ struct SharedData {
 } shared;
 
 SemaphoreHandle_t dataMutex;
-
 TaskHandle_t canbusTaskHandle = NULL;
 TaskHandle_t displayTaskHandle = NULL;
 
@@ -69,24 +67,19 @@ inline void toggle_max_threshold(double value, double max_value, bool &condition
   condition = (value > max_value);
 }
 
-inline void toggle_out_of_range(double value, double min_value, double max_value, bool &condition) {
-  condition = (value < min_value) || (value > max_value);
-}
-
 class CompareIdentifier {
   uint16_t identifier;
 
 public:
   CompareIdentifier(uint16_t identifier) : identifier(identifier) {}
   bool operator()(const CanFrame &rxFrame) const {
-    return rxFrame.identifier == identifier;  //i believe if frameID matches the rule its true 
+    return rxFrame.identifier == identifier;
   }
 };
 
-
 void setup() {
   Serial.begin(9600);
-  Serial.println("Starting system...");
+  Serial.println("Starting...");
 
   bool success = ESP32Can.begin(ESP32Can.convertSpeed(SPEED), CAN_TX, CAN_RX, 10, 10);
   if (success)
@@ -108,21 +101,17 @@ void setup() {
   Serial.println("Headless mode (no display)");
 #endif
 
-  // created a mutex to protect 'shared'
   dataMutex = xSemaphoreCreateMutex();
 
-  // Created CANBus task on CPU 0
   xTaskCreatePinnedToCore(
-      canbusTask,          
-      "CAN Task",      
+      canbusTask,
+      "CAN Task",
       4096,
       NULL,
       2,
       &canbusTaskHandle,
-      0                // this is the core 
-  );
+      0);
 
-  // Created Display task on CPU 1
   xTaskCreatePinnedToCore(
       displayTask,
       "Display Task",
@@ -130,29 +119,34 @@ void setup() {
       NULL,
       1,
       &displayTaskHandle,
-      1               
-  );
+      1);
 }
 
 void canbusTask(void *pvParameters) {
   for (;;) {
     if (ESP32Can.readFrame(rxFrame, 100)) {
       xSemaphoreTake(dataMutex, portMAX_DELAY);
-      rule_engine.run(rxFrame); // process frame, update shared struct
+      rule_engine.run(rxFrame);
       xSemaphoreGive(dataMutex);
+
+      if (displayTaskHandle != NULL) {
+        xTaskNotifyGive(displayTaskHandle);
+      }
     }
     vTaskDelay(1);
   }
 }
 
+
 void loop() {}
 
-
 void displayTask(void *pvParameters) {
-  for (;;) { // this is a scummy way to allow it to run forever 
-#if (HAS_DISPLAY)
+  for (;;) {
+    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
     xSemaphoreTake(dataMutex, portMAX_DELAY);
 
+#if (HAS_DISPLAY)
     lv_label_set_text_fmt(ui_espeed, "%d", (int)shared.speed);
     lv_label_set_text_fmt(ui_erpm, "%d", (int)shared.rpm);
     lv_label_set_text_fmt(ui_egear, "%d", (int)shared.gear);
@@ -168,11 +162,19 @@ void displayTask(void *pvParameters) {
     else
       lv_obj_add_flag(ui_eengineback, LV_OBJ_FLAG_HIDDEN);
 
-    xSemaphoreGive(dataMutex);
-
     lv_timer_handler();
+#else
+    Serial.printf("Speed: %.1f km/h | RPM: %.0f | Gear: %u | Voltage: %.1fV | Oil P: %.1f kPa | Oil T: %.1f°C | CheckEng: %d\n",
+                  shared.speed,
+                  shared.rpm,
+                  shared.gear,
+                  shared.voltage,
+                  shared.pressure,
+                  shared.temperature,
+                  shared.engine_error);
 #endif
-    vTaskDelay(10 / portTICK_PERIOD_MS); 
+
+    xSemaphoreGive(dataMutex);
   }
 }
 
@@ -184,7 +186,6 @@ void handle_speed(const CanFrame &rxFrame) {
 void handle_rpm(const CanFrame &rxFrame) {
   u16 raw = ((u16)rxFrame.data[0] << 8) | (u16)rxFrame.data[1];
   shared.rpm = raw;
-
   toggle_max_threshold(shared.rpm, (double)RPM_MAX, shared.rpm_up);
   toggle_min_threshold(shared.rpm, (double)RPM_MIN, shared.rpm_down);
 }

@@ -249,10 +249,12 @@ void handle_rpm(const CanFrame &rx){
 #if (HAS_DISPLAY)
   update_text_u16(raw,ui_erpm);
   void update_text_u16(u16 v, lv_obj_t * ui);
-  lv_bar_set_value(ui_erpmbar, raw, LV_ANIM_OFF);
+  u16 id = (u16)rx.identifier;
+  //lv_bar_set_value(ui_erpmbar, raw, LV_ANIM_OFF);
 
-  lv_snprintf(buf,sizeof(buf),"%u",(unsigned)v);
-  lv_label_set_text(ui,buf);
+  lv_snprintf(buf,sizeof(buf),"%d, %d, %d, %d, %d, %d, %d, %d, %d",
+  rx.identifier, rx.data[0], rx.data[1], rx.data[2], rx.data[3], rx.data[4], rx.data[5], rx.data[6], rx.data[7]);
+  lv_label_set_text(ui_erpm,buf);
   update=true;
 #endif
   toggle_max_threshold(rpm_value,RPM_MAX,rpm_up);

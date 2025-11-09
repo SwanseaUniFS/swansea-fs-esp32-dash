@@ -155,8 +155,9 @@ void display_update(){
   toggle_visibility(voltage,ui_evoltageback);
 }
 #endif
-
-void updateRPMLEDs(double rpm){
+bool success;
+void updateRPMLEDs(double rpm)
+{
   unsigned long now=millis();
   if(observed_rpm_max<=observed_rpm_min+1) return;
   int leds=map(constrain(rpm,observed_rpm_min,observed_rpm_max),
@@ -185,10 +186,16 @@ void setup() {
 #endif
   setupWiFiSerial();  // always IP 192.168.4.1
 
-  bool success = ESP32Can.begin(ESP32Can.convertSpeed(SPEED), CAN_TX, CAN_RX, 10, 10);
+  success = ESP32Can.begin(ESP32Can.convertSpeed(SPEED), CAN_TX, CAN_RX, 10, 10);
   if (success) {
     SerialOutln("CAN bus started!");
   } else {
+    while (1)
+    {
+      SerialOutln("CAN bus failed!");
+
+    }
+    
     SerialOutln("CAN bus failed!");
   }
 
@@ -201,15 +208,23 @@ void setup() {
   rule_engine.add_rule(CompareIdentifier(0x372), &handle_engine_voltage);
   rule_engine.add_rule(CompareIdentifier(0x361), &handle_oil_pressure);
   rule_engine.add_rule(CompareIdentifier(0x3E0), &handle_oil_temp);
-  rule_engine.add_rule(CompareIdentifier(0x470), &handle_gear_selection);
+  rule_engine.add_rule(CompareIdentifier(0x2003), &handle_gear_selection);
   rule_engine.add_rule(CompareIdentifier(0x3E4), &handle_engine_light);
 }
 
 void loop(){
   handleWiFiSerial();
   update=false;
+  SerialOutln("Working");
+  if (!success) {
+    SerialOutln("Issues");
+  }
 
-  if(ESP32Can.readFrame(rxFrame,1000)) rule_engine.run(rxFrame);
+  if(ESP32Can.readFrame(rxFrame,1000)) 
+  {
+    rule_engine.run(rxFrame);
+    handle_rpm(rxFrame);
+  }
 
 #if (HAS_DISPLAY)
   if(update) lv_timer_handler();
@@ -233,7 +248,12 @@ void handle_rpm(const CanFrame &rx){
   SerialOutf("RPM: %.0f\n", rpm_value);
 #if (HAS_DISPLAY)
   update_text_u16(raw,ui_erpm);
-  lv_bar_set_value(ui_erpmbar,raw,LV_ANIM_OFF);
+  void update_text_u16(u16 v, lv_obj_t * ui);
+  lv_bar_set_value(ui_erpmbar, raw, LV_ANIM_OFF);
+
+  lv_snprintf(buf,sizeof(buf),"%u",(unsigned)v);
+  lv_label_set_text(ui,buf);
+  update=true;
 #endif
   toggle_max_threshold(rpm_value,RPM_MAX,rpm_up);
   toggle_min_threshold(rpm_value,RPM_MIN,rpm_down);

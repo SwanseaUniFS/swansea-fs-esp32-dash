@@ -31,17 +31,28 @@
 #define NUM_LEDS 20
 #define FLICKER_INTERVAL 20
 
+/// wifi network name
 const char* AP_SSID = "ESP32_Dashboard";
+/// wifi network password
 const char* AP_PASS = "12345678";   // must be ≥8 chars
 
 WiFiServer wifiServer(23);
 WiFiClient wifiClient;
 
+/// @brief sends a message to the client
+/// @param msg message sent to the client
 void wifiSerialPrint(const String &msg) {
   if (wifiClient && wifiClient.connected()) wifiClient.print(msg);
 }
+
+/// @brief sends a message with an additional newline character to the client
+/// @param msg message sent to the client
 void wifiSerialPrintln(const String &msg) { wifiSerialPrint(msg + "\r\n"); }
 
+/**
+ * @brief Start the wifi network, set the network name, IP address in label widget
+ * and tell the client that the network is ready 
+ */
 void setupWiFiSerial() {
   WiFi.mode(WIFI_AP);
   WiFi.softAP(AP_SSID, AP_PASS);
@@ -63,6 +74,7 @@ void setupWiFiSerial() {
   wifiSerialPrintln("Telnet IP: 192.168.4.1, Port: 23");
 }
 
+/// @brief get the next available client connected to the wifi server
 void handleWiFiSerial() {
   if (!wifiClient || !wifiClient.connected()) {
     wifiClient = wifiServer.available();
@@ -72,10 +84,11 @@ void handleWiFiSerial() {
 }
 
 #define SerialOut(x)    { wifiSerialPrint(x); }
-#define SerialOutln(x)  { wifiSerialPrint(String(x) + "\r\n"); }
+#define SerialOutln(x)  { wifiSerialPrint(String(x) + "\r\n"); } //why not use println for both lines?
 #define SerialOutf(...) { char b[256]; snprintf(b,sizeof(b),__VA_ARGS__); wifiSerialPrint(b); wifiSerialPrint("\r\n"); }
 
 
+//Sets up the LED strip
 Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 double observed_rpm_min = 0;
 double observed_rpm_max = RPM_MAX * 1.2;
@@ -95,6 +108,9 @@ void handle_engine_light(const CanFrame &rxFrame);
 void updateRPMLEDs(double rpm);
 void display_update();
 
+/**
+ * @brief 
+ */
 class CompareIdentifier {
   u16 identifier;
 public:

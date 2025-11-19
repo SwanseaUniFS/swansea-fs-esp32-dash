@@ -84,7 +84,7 @@ void handleWiFiSerial() {
 }
 
 #define SerialOut(x)    { wifiSerialPrint(x); }
-#define SerialOutln(x)  { wifiSerialPrint(String(x) + "\r\n"); } //why not use println for both lines?
+#define SerialOutln(x)  { wifiSerialPrint(String(x) + "\r\n"); } //why not use wifiSerialPrintln for both lines?
 #define SerialOutf(...) { char b[256]; snprintf(b,sizeof(b),__VA_ARGS__); wifiSerialPrint(b); wifiSerialPrint("\r\n"); }
 
 
